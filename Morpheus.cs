@@ -4,6 +4,7 @@ using Abc.Zebus;
 using Zebus.Morpheus.Simulation;
 using Pastel;
 using System.Drawing;
+using Abc.Zebus.Core;
 
 namespace Zebus.Morpheus;
 
@@ -31,25 +32,45 @@ public class Morpheus(Options options)
 		using var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
 		ZebusLogManager.LoggerFactory = loggerFactory;
 
+		var busConfiguration = new BusConfiguration { DirectoryServiceEndPoints = runOptions.DirectoryEndpoints };
+
+		using var controlBus = new BusFactory()
+			.WithConfiguration(busConfiguration, runOptions.Environment)
+			.WithPeerId("Zebus.Oracle")
+			.CreateBus();
+
+		controlBus.Start();
+
 		foreach (var (simulation, simulationInfo) in simulations)
 		{
 			var context = new SimulationContext
 			{
 				Logger = loggerFactory.CreateLogger(simulationInfo.Type.Name),
-				Configuration = new BusConfiguration { DirectoryServiceEndPoints = runOptions.DirectoryEndpoints },
-				Environment = runOptions.Environment
+				Configuration = busConfiguration,
+				Environment = runOptions.Environment,
+				Simulation = simulationInfo,
 			};
-			await RunSimulation(context, simulationInfo, simulation);
+
+			await RunSimulation(controlBus, context, simulationInfo, simulation);
 		}
 	}
 
-	private async Task RunSimulation(SimulationContext context, SimulationInfo simulationInfo, ISimulation simulation)
+	private async Task RunSimulation(IBus controlBus, SimulationContext context, SimulationInfo simulationInfo, ISimulation simulation)
 	{
 		try
 		{
-			Console.WriteLine($"running {simulationInfo.Name} ...");
-			var result = await simulation.Run(context);
+			context.OnStarted += () => controlBus.Publish(SimulationStarted.Create(simulation, simulationInfo));
+			Console.WriteLine($"Preparing {simulationInfo.Name} ...");
+
+			await simulation.BeforeRun(context);
+
+			Console.WriteLine($"Running {simulationInfo.Name} ...");
+			var result = await simulation.Run(context).TimeoutAfter(TimeSpan.FromSeconds(60));
+
+			await simulation.AfterRun(context);
+
 			HandleSimulationResult(simulationInfo, result);
+
 		}
 		catch (Exception ex)
 		{

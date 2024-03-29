@@ -1,5 +1,9 @@
 {
   "echo": {
     "Count": 100
+  },
+  "basic-command": {
+    "Count": 100,
+    "Seq": 1
   }
 }

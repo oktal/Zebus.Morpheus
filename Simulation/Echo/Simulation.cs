@@ -24,10 +24,15 @@ public class EchoParameters
 [Simulation(Name = "echo", Parameters = typeof(EchoParameters))]
 public class EchoSimulation : ParameteredSimulation<EchoParameters>, ISimulation
 {
+    public Task BeforeRun(SimulationContext context)
+		=> Task.CompletedTask;
+
     public async Task<SimulationResult> Run(SimulationContext context)
     {
 		using var bus = context.CreateBus("Zebus.Morpheus.Echo.Simulation");
+
 		bus.Start();
+		context.Start();
 
 		for (var i = 0; i < Parameters.Count; ++i)
 		{
@@ -51,6 +56,10 @@ public class EchoSimulation : ParameteredSimulation<EchoParameters>, ISimulation
 					new SimulationException($"Invalid response, expected {nameof(EchoResponse)} message"));
 			}
 		}
+
 		return new SimulationResult.Success();
     }
+
+    public Task AfterRun(SimulationContext context)
+		=> Task.CompletedTask;
 }
