@@ -27,10 +27,22 @@ public class Morpheus(Options options)
 
 	private async Task Run(Options.RunOptions runOptions)
 	{
+		var results = await RunAll(runOptions).ToListAsync();
+		ReportSimulationResults(results);
+	}
+
+	private async IAsyncEnumerable<SimulationInfoResult> RunAll(Options.RunOptions runOptions)
+	{
 		var simulations = LoadSimulations(runOptions.Simulations);
 
-		using var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
+		using var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole(opts => {
+			opts.IncludeScopes = true;
+			opts.SingleLine = true;
+			opts.TimestampFormat = "[HH:mm:ss] ";
+		}));
 		ZebusLogManager.LoggerFactory = loggerFactory;
+
+		var logger = loggerFactory.CreateLogger(nameof(Morpheus));
 
 		var busConfiguration = new BusConfiguration { DirectoryServiceEndPoints = runOptions.DirectoryEndpoints };
 
@@ -51,30 +63,29 @@ public class Morpheus(Options options)
 				Simulation = simulationInfo,
 			};
 
-			await RunSimulation(controlBus, context, simulationInfo, simulation);
+			yield return await RunSimulation(controlBus, logger, context, simulationInfo, simulation);
 		}
 	}
 
-	private async Task RunSimulation(IBus controlBus, SimulationContext context, SimulationInfo simulationInfo, ISimulation simulation)
+    private async Task<SimulationInfoResult> RunSimulation(IBus controlBus, ILogger logger, SimulationContext context, SimulationInfo simulationInfo, ISimulation simulation)
 	{
 		try
 		{
 			context.OnStarted += () => controlBus.Publish(SimulationStarted.Create(simulation, simulationInfo));
-			Console.WriteLine($"Preparing {simulationInfo.Name} ...");
+			logger.LogInformation($"Preparing {simulationInfo.Name} ...");
 
 			await simulation.BeforeRun(context);
 
-			Console.WriteLine($"Running {simulationInfo.Name} ...");
+			logger.LogInformation($"Running {simulationInfo.Name} ...");
 			var result = await simulation.Run(context).TimeoutAfter(TimeSpan.FromSeconds(60));
 
 			await simulation.AfterRun(context);
-
-			HandleSimulationResult(simulationInfo, result);
+			return new SimulationInfoResult(simulationInfo, result);
 
 		}
 		catch (Exception ex)
 		{
-			HandleSimulationResult(simulationInfo, new SimulationResult.Error(ex));
+			return new SimulationInfoResult(simulationInfo, new SimulationResult.Error(ex));
 		}
 	}
 
@@ -113,6 +124,30 @@ public class Morpheus(Options options)
 			
 		}
 	}
+
+    private void ReportSimulationResults(List<SimulationInfoResult> results)
+    {
+		const int SeparatorPadding = 10;
+
+		var longestSimulationName = results.Max(r => r.Simulation.Name.Length);
+
+		foreach (var result in results)
+		{
+			var simulation = result.Simulation;
+			var (prefix, resultText, errorText) = result.Result switch {
+				SimulationResult.Success _ => ("🚀", "OK".Pastel(Color.Green), string.Empty),
+				SimulationResult.Error err   => ("✗", "FAILED".Pastel(Color.Red), err.Exception.Message),
+				_ => throw new ArgumentOutOfRangeException(nameof(SimulationResult)),
+			};
+
+			var padding = (longestSimulationName - simulation.Name.Length) + SeparatorPadding + 2 + resultText.Length;
+
+			if (!string.IsNullOrEmpty(errorText))
+				Console.WriteLine($"{prefix} [{simulation.Name}] {resultText.PadLeft(padding)} | {errorText}");
+			else
+				Console.WriteLine($"{prefix} [{simulation.Name}] {resultText.PadLeft(padding)}");
+		}
+    }
 
 	private class SimulationDescriptor
 	{
@@ -180,4 +215,6 @@ public class Morpheus(Options options)
 				 ?? throw new InvalidOperationException($"Failed to deserialize parameters of type {typeof(TParameters)} from {element}");
         }
     }
+
+	private record SimulationInfoResult(SimulationInfo Simulation, SimulationResult Result);
 }
