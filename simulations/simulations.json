@@ -10,5 +10,10 @@
     "RoutingKeys": ["eu-west-3", "us-east-1", "ap-south-2"],
     "Count": 100,
     "Seq": 1
+  },
+  "basic-event": {
+    "PeerCount": 10,
+    "Count": 100,
+    "Seq": 1
   }
 }
