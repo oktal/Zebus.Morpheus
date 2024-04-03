@@ -1,37 +1,36 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
-using Abc.Zebus;
 
 namespace Zebus.Morpheus.Simulation;
 
 /// <summary>
-/// A basic asynchronous channel to send and receive <see cref="IMessage" /> messages
+/// A basic asynchronous channel to send and receive entries
 /// </summary>
-public interface IMessageChannel
+public interface IAsyncChannel<TEntry>
 {
-	Task Send(IMessage message, CancellationToken cancellationToken = default(CancellationToken));
+	Task Send(TEntry entry, CancellationToken cancellationToken = default(CancellationToken));
 
-	IAsyncEnumerable<IMessage> Receive(int count, CancellationToken cancellationToken = default(CancellationToken));
+	IAsyncEnumerable<TEntry> Receive(int count, CancellationToken cancellationToken = default(CancellationToken));
 }
 
-public class MessageChannel : IMessageChannel
+public class AsyncChannel<TEntry> : IAsyncChannel<TEntry>
 {
-	private readonly ChannelWriter<IMessage> _writer;
-	private readonly ChannelReader<IMessage> _reader;
+	private readonly ChannelWriter<TEntry> _writer;
+	private readonly ChannelReader<TEntry> _reader;
 
-	private MessageChannel(Channel<IMessage> channel)
+	private AsyncChannel(Channel<TEntry> channel)
 	{
 		_reader = channel.Reader;
 		_writer = channel.Writer;
 	}
 
-	public static MessageChannel Create()
+	public static AsyncChannel<TEntry> Create()
 	{
-		var channel = Channel.CreateUnbounded<IMessage>();
-		return new MessageChannel(channel);
+		var channel = Channel.CreateUnbounded<TEntry>();
+		return new AsyncChannel<TEntry>(channel);
 	}
 
-    public async IAsyncEnumerable<IMessage> Receive(int count, [EnumeratorCancellation] CancellationToken cancellationToken = default(CancellationToken))
+    public async IAsyncEnumerable<TEntry> Receive(int count, [EnumeratorCancellation] CancellationToken cancellationToken = default(CancellationToken))
     {
 		int received = 0;
 
@@ -43,6 +42,6 @@ public class MessageChannel : IMessageChannel
 		}
     }
 
-    public async Task Send(IMessage message, CancellationToken cancellationToken = default)
-		=> await _writer.WriteAsync(message, cancellationToken);
+    public async Task Send(TEntry entry, CancellationToken cancellationToken = default)
+		=> await _writer.WriteAsync(entry, cancellationToken);
 }

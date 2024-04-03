@@ -2,11 +2,13 @@ using Abc.Zebus;
 
 namespace Zebus.Morpheus.Simulation.BasicCommand;
 
-public class BasicCommandHandler(IMessageChannel channel) : IAsyncMessageHandler<BasicCommand>
+public record MessageEntry(IMessage Message, PeerId ReceiverId);
+
+public class BasicCommandHandler(IAsyncChannel<MessageEntry> channel, IBus bus) : IAsyncMessageHandler<BasicCommand>
 {
     public async Task Handle(BasicCommand message)
     {
-		await channel.Send(message);
+		await channel.Send(new MessageEntry(message, bus.PeerId));
     }
 }
 
@@ -39,13 +41,8 @@ public class BasicCommandParameters
 [Simulation(Name = "basic-command", Parameters = typeof(BasicCommandParameters))]
 public class BasicCommandSimulation : ParameteredSimulation<BasicCommandParameters>, ISimulation
 {
-	private readonly IMessageChannel _channel;
+	private readonly IAsyncChannel<MessageEntry> _channel = AsyncChannel<MessageEntry>.Create();
 	private IBus? _bus;
-
-	public BasicCommandSimulation()
-	{
-		_channel = MessageChannel.Create();
-	}
 
     public Task BeforeRun(SimulationContext context)
     {
@@ -53,7 +50,7 @@ public class BasicCommandSimulation : ParameteredSimulation<BasicCommandParamete
 			.CreateBusFactory()
 			.WithPeerId("Zebus.Morpheus.Simulation.BasicCommand")
 			.WithHandlers(typeof(BasicCommandHandler))
-			.ConfigureContainer(cfg => cfg.ForSingletonOf<IMessageChannel>().Use(_channel))
+			.ConfigureContainer(cfg => cfg.ForSingletonOf<IAsyncChannel<MessageEntry>>().Use(_channel))
 			.CreateBus();
 
 		return Task.CompletedTask;
@@ -69,13 +66,14 @@ public class BasicCommandSimulation : ParameteredSimulation<BasicCommandParamete
 
 		var messages = await _channel.Receive(Parameters.Count).ToListAsync();
 
-		foreach (var (message, expectedSequence) in messages.Zip(Enumerable.Range(Parameters.Seq, Parameters.Seq + Parameters.Count)))
+		foreach (var ((message, receiver), expectedSequence) in messages.Zip(Enumerable.Range(Parameters.Seq, Parameters.Seq + Parameters.Count)))
 		{
 			if (message is not BasicCommand command)
 				return new SimulationResult.Error(new SimulationException($"Invalid command type. Expected {nameof(BasicCommand)} got {message.GetType().Name}"));
 
 			if (command.Sequence != expectedSequence)
 				return new SimulationResult.Error(new SimulationException($"Expected sequence {expectedSequence} got {command.Sequence}"));
+
 		}
 
 		return new SimulationResult.Success();

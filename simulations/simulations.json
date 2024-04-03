@@ -5,5 +5,10 @@
   "basic-command": {
     "Count": 100,
     "Seq": 1
+  },
+  "routed-command": {
+    "RoutingKeys": ["eu-west-3", "us-east-1", "ap-south-2"],
+    "Count": 100,
+    "Seq": 1
   }
 }
