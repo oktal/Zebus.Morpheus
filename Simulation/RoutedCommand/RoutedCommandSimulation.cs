@@ -9,27 +9,27 @@ public class RoutedCommandHandler(IAsyncChannel<MessageEntry> channel, IBus bus)
 {
     public async Task Handle(RoutedCommand message)
     {
-		await channel.Send(new MessageEntry(message, bus.PeerId));
+        await channel.Send(new MessageEntry(message, bus.PeerId));
     }
 }
 
 public class RoutedCommandParameters
 {
-	/// <summary>
-	/// A list of routing keys to subscribe to.
-	/// Each routing key of this list will be subscribed from a different peer
-	/// </summary>
-	public List<string> RoutingKeys { get; set; } = new();
+    /// <summary>
+    /// A list of routing keys to subscribe to.
+    /// Each routing key of this list will be subscribed from a different peer
+    /// </summary>
+    public List<string> RoutingKeys { get; set; } = new();
 
-	/// <summary>
-	/// Number of commands to send per routing
-	/// </summary>
-	public int Count { get; set; }
+    /// <summary>
+    /// Number of commands to send per routing
+    /// </summary>
+    public int Count { get; set; }
 
-	/// <summary>
-	/// Start sequence number
-	/// </summary>
-	public int Seq { get; set; } = 1;
+    /// <summary>
+    /// Start sequence number
+    /// </summary>
+    public int Seq { get; set; } = 1;
 }
 
 /// <summary>
@@ -41,66 +41,66 @@ public class RoutedCommandParameters
 [Simulation(Name = "routed-command", Parameters = typeof(RoutedCommandParameters))]
 public class RoutedCommandSimulation : ParameteredSimulation<RoutedCommandParameters>, ISimulation
 {
-	private readonly IAsyncChannel<MessageEntry> _channel = AsyncChannel<MessageEntry>.Create();
-	private readonly List<IBus> _buses = new();
+    private readonly IAsyncChannel<MessageEntry> _channel = AsyncChannel<MessageEntry>.Create();
+    private readonly List<IBus> _buses = new();
 
     public async Task BeforeRun(SimulationContext context)
     {
-		foreach (var routingKey in Parameters.RoutingKeys)
-		{
-			var bus = context
-				.CreateBusFactory()
-				.WithPeerId($"Zebus.Morpheus.RoutedCommand.Simulation.{routingKey}")
-				.WithHandlers(typeof(RoutedCommandHandler))
-				.ConfigureContainer(cfg => cfg.ForSingletonOf<IAsyncChannel<MessageEntry>>().Use(_channel))
-				.CreateBus();
+        foreach (var routingKey in Parameters.RoutingKeys)
+        {
+            var bus = context
+                .CreateBusFactory()
+                .WithPeerId($"Zebus.Morpheus.RoutedCommand.Simulation.{routingKey}")
+                .WithHandlers(typeof(RoutedCommandHandler))
+                .ConfigureContainer(cfg => cfg.ForSingletonOf<IAsyncChannel<MessageEntry>>().Use(_channel))
+                .CreateBus();
 
-			bus.Start();
+            bus.Start();
 
-			context.Logger.LogInformation($"Subscribing to {routingKey}");
-			await bus.SubscribeAsync(Subscription.Matching<RoutedCommand>(cmd => cmd.RoutingString == routingKey));
+            context.Logger.LogInformation($"Subscribing to {routingKey}");
+            await bus.SubscribeAsync(Subscription.Matching<RoutedCommand>(cmd => cmd.RoutingString == routingKey));
 
-			_buses.Add(bus);
-		}
+            _buses.Add(bus);
+        }
     }
 
     public async Task<SimulationResult> Run(SimulationContext context)
     {
-		context.Start();
-	
-		var expectedMessageCount = Parameters.RoutingKeys.Count * Parameters.Count;
-		var messages = await _channel.Receive(expectedMessageCount).ToListAsync();
+        context.Start();
 
-		var messagesByReceiverIds = messages.GroupBy(m => m.ReceiverId);
+        var expectedMessageCount = Parameters.RoutingKeys.Count * Parameters.Count;
+        var messages = await _channel.Receive(expectedMessageCount).ToListAsync();
 
-		foreach (var messagesByReceiverId in messagesByReceiverIds)
-		{
-			var peerId = messagesByReceiverId.Key;
-			var receivedMessages = messagesByReceiverId.ToList();
+        var messagesByReceiverIds = messages.GroupBy(m => m.ReceiverId);
 
-			if (receivedMessages.Count != Parameters.Count)
-				return new SimulationResult.Error(new SimulationException($"Peer {peerId} received {receivedMessages.Count} messages, expected {Parameters.Count}"));
+        foreach (var messagesByReceiverId in messagesByReceiverIds)
+        {
+            var peerId = messagesByReceiverId.Key;
+            var receivedMessages = messagesByReceiverId.ToList();
 
-			foreach (var (msgEntry, expectedSequence) in receivedMessages.Zip(Enumerable.Range(Parameters.Seq, Parameters.Seq + Parameters.Count)))
-			{
-				if (msgEntry.Message is not RoutedCommand command)
-					throw new InvalidOperationException($"Expected message of type {nameof(RoutedCommand)} got {msgEntry.Message.GetType()} for peer {peerId}");
+            if (receivedMessages.Count != Parameters.Count)
+                return new SimulationResult.Error(new SimulationException($"Peer {peerId} received {receivedMessages.Count} messages, expected {Parameters.Count}"));
 
-				if (command.Seq != expectedSequence)
-					return new SimulationResult.Error(new SimulationException($"Expected sequence {expectedSequence} got {command.Seq} for peer {peerId}"));
-			}
-		}
+            foreach (var (msgEntry, expectedSequence) in receivedMessages.Zip(Enumerable.Range(Parameters.Seq, Parameters.Seq + Parameters.Count)))
+            {
+                if (msgEntry.Message is not RoutedCommand command)
+                    throw new InvalidOperationException($"Expected message of type {nameof(RoutedCommand)} got {msgEntry.Message.GetType()} for peer {peerId}");
+
+                if (command.Seq != expectedSequence)
+                    return new SimulationResult.Error(new SimulationException($"Expected sequence {expectedSequence} got {command.Seq} for peer {peerId}"));
+            }
+        }
 
 
-		return new SimulationResult.Success();
+        return new SimulationResult.Success();
     }
 
     public Task AfterRun(SimulationContext context)
     {
-		foreach (var bus in _buses)
-			bus.Stop();
+        foreach (var bus in _buses)
+            bus.Stop();
 
-		_buses.Clear();
-		return Task.CompletedTask;
+        _buses.Clear();
+        return Task.CompletedTask;
     }
 }

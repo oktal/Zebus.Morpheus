@@ -8,7 +8,7 @@ public class BasicCommandHandler(IAsyncChannel<MessageEntry> channel, IBus bus) 
 {
     public async Task Handle(BasicCommand message)
     {
-		await channel.Send(new MessageEntry(message, bus.PeerId));
+        await channel.Send(new MessageEntry(message, bus.PeerId));
     }
 }
 
@@ -17,15 +17,15 @@ public class BasicCommandHandler(IAsyncChannel<MessageEntry> channel, IBus bus) 
 /// </summary>
 public class BasicCommandParameters
 {
-	/// <summary>
-	/// Number of commands to send
-	/// </summary>
-	public int Count { get; set; }
+    /// <summary>
+    /// Number of commands to send
+    /// </summary>
+    public int Count { get; set; }
 
-	/// <summary>
-	/// Start sequence number
-	/// </summary>
-	public int Seq { get; set; } = 1;
+    /// <summary>
+    /// Start sequence number
+    /// </summary>
+    public int Seq { get; set; } = 1;
 }
 
 /// <summary>
@@ -41,49 +41,49 @@ public class BasicCommandParameters
 [Simulation(Name = "basic-command", Parameters = typeof(BasicCommandParameters))]
 public class BasicCommandSimulation : ParameteredSimulation<BasicCommandParameters>, ISimulation
 {
-	private readonly IAsyncChannel<MessageEntry> _channel = AsyncChannel<MessageEntry>.Create();
-	private IBus? _bus;
+    private readonly IAsyncChannel<MessageEntry> _channel = AsyncChannel<MessageEntry>.Create();
+    private IBus? _bus;
 
     public Task BeforeRun(SimulationContext context)
     {
-		 _bus = context
-			.CreateBusFactory()
-			.WithPeerId("Zebus.Morpheus.Simulation.BasicCommand")
-			.WithHandlers(typeof(BasicCommandHandler))
-			.ConfigureContainer(cfg => cfg.ForSingletonOf<IAsyncChannel<MessageEntry>>().Use(_channel))
-			.CreateBus();
+        _bus = context
+           .CreateBusFactory()
+           .WithPeerId("Zebus.Morpheus.Simulation.BasicCommand")
+           .WithHandlers(typeof(BasicCommandHandler))
+           .ConfigureContainer(cfg => cfg.ForSingletonOf<IAsyncChannel<MessageEntry>>().Use(_channel))
+           .CreateBus();
 
-		return Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
     public async Task<SimulationResult> Run(SimulationContext context)
     {
-		if (_bus is null)
-			throw new InvalidOperationException("Bus is null");
+        if (_bus is null)
+            throw new InvalidOperationException("Bus is null");
 
-		_bus.Start();
-		context.Start();
+        _bus.Start();
+        context.Start();
 
-		var messages = await _channel.Receive(Parameters.Count).ToListAsync();
+        var messages = await _channel.Receive(Parameters.Count).ToListAsync();
 
-		foreach (var ((message, receiver), expectedSequence) in messages.Zip(Enumerable.Range(Parameters.Seq, Parameters.Seq + Parameters.Count)))
-		{
-			if (message is not BasicCommand command)
-				return new SimulationResult.Error(new SimulationException($"Invalid command type. Expected {nameof(BasicCommand)} got {message.GetType().Name}"));
+        foreach (var ((message, receiver), expectedSequence) in messages.Zip(Enumerable.Range(Parameters.Seq, Parameters.Seq + Parameters.Count)))
+        {
+            if (message is not BasicCommand command)
+                return new SimulationResult.Error(new SimulationException($"Invalid command type. Expected {nameof(BasicCommand)} got {message.GetType().Name}"));
 
-			if (command.Sequence != expectedSequence)
-				return new SimulationResult.Error(new SimulationException($"Expected sequence {expectedSequence} got {command.Sequence}"));
+            if (command.Sequence != expectedSequence)
+                return new SimulationResult.Error(new SimulationException($"Expected sequence {expectedSequence} got {command.Sequence}"));
 
-		}
+        }
 
-		return new SimulationResult.Success();
+        return new SimulationResult.Success();
     }
 
     public Task AfterRun(SimulationContext context)
     {
-		_bus?.Stop();
-		_bus = null;
-		return Task.CompletedTask;
+        _bus?.Stop();
+        _bus = null;
+        return Task.CompletedTask;
     }
 
 }

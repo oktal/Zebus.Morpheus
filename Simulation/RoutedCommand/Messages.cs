@@ -8,10 +8,10 @@ namespace Zebus.Morpheus.Simulation.RoutedCommand;
 [Routable]
 public class RoutedCommand : ICommand
 {
-	[ProtoMember(1)]
-	[RoutingPosition(1)]
-	public required string RoutingString { get; set;}
+    [ProtoMember(1)]
+    [RoutingPosition(1)]
+    public required string RoutingString { get; set; }
 
-	[ProtoMember(2)]
-	public int Seq { get; set; }
+    [ProtoMember(2)]
+    public int Seq { get; set; }
 }
